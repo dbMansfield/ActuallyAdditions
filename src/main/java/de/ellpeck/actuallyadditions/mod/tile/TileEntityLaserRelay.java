@@ -14,7 +14,7 @@ import de.ellpeck.actuallyadditions.api.ActuallyAdditionsAPI;
 import de.ellpeck.actuallyadditions.api.laser.IConnectionPair;
 import de.ellpeck.actuallyadditions.api.laser.LaserType;
 import de.ellpeck.actuallyadditions.api.laser.Network;
-import de.ellpeck.actuallyadditions.mod.misc.ConnectionPair;
+import de.ellpeck.actuallyadditions.mod.misc.apiimpl.ConnectionPair;
 import io.netty.util.internal.ConcurrentSet;
 import net.minecraft.entity.player.EntityPlayer;
 import net.minecraft.nbt.NBTTagCompound;

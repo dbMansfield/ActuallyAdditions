@@ -11,28 +11,26 @@
 package de.ellpeck.actuallyadditions.mod.tile;
 
 import cofh.api.energy.EnergyStorage;
+import de.ellpeck.actuallyadditions.api.ActuallyAdditionsAPI;
+import de.ellpeck.actuallyadditions.api.farmer.IFarmerBehavior;
+import de.ellpeck.actuallyadditions.api.internal.IFarmer;
 import de.ellpeck.actuallyadditions.mod.util.StackUtil;
 import de.ellpeck.actuallyadditions.mod.util.WorldUtil;
 import net.minecraft.block.Block;
-import net.minecraft.block.BlockCrops;
-import net.minecraft.block.BlockDirt;
-import net.minecraft.block.BlockGrass;
 import net.minecraft.block.state.IBlockState;
-import net.minecraft.init.Blocks;
-import net.minecraft.init.SoundEvents;
 import net.minecraft.item.Item;
 import net.minecraft.item.ItemBlock;
 import net.minecraft.item.ItemStack;
 import net.minecraft.nbt.NBTTagCompound;
 import net.minecraft.util.EnumFacing;
-import net.minecraft.util.SoundCategory;
 import net.minecraft.util.math.BlockPos;
 import net.minecraftforge.common.IPlantable;
+import net.minecraft.world.World;
+import net.minecraftforge.energy.IEnergyStorage;
 
-import java.util.ArrayList;
 import java.util.List;
 
-public class TileEntityFarmer extends TileEntityInventoryBase implements ICustomEnergyReceiver{
+public class TileEntityFarmer extends TileEntityInventoryBase implements IFarmer {
 
     public static final int USE_PER_OPERATION = 1500;
     public final EnergyStorage storage = new EnergyStorage(100000);
@@ -73,88 +71,26 @@ public class TileEntityFarmer extends TileEntityInventoryBase implements ICustom
     public void updateEntity(){
         super.updateEntity();
         if(!this.worldObj.isRemote){
-            if(!this.isRedstonePowered){
+            if(!this.isRedstonePowered && this.storage.getEnergyStored() > 0){
                 if(this.waitTime > 0){
                     this.waitTime--;
 
                     if(this.waitTime <= 0){
-                        if(this.storage.getEnergyStored() >= USE_PER_OPERATION){
-                            boolean didSomething = false;
+                        int radiusAroundCenter = 4;
 
-                            int radiusAroundCenter = 4;
+                        IBlockState state = this.worldObj.getBlockState(this.pos);
+                        int meta = state.getBlock().getMetaFromState(state);
+                        BlockPos center = this.pos.offset(EnumFacing.getHorizontal(meta), radiusAroundCenter+1);
 
-                            IBlockState state = this.worldObj.getBlockState(this.pos);
-                            int meta = state.getBlock().getMetaFromState(state);
-                            EnumFacing side = meta == 0 ? EnumFacing.NORTH : (meta == 1 ? EnumFacing.SOUTH : (meta == 2 ? EnumFacing.WEST : EnumFacing.EAST));
-                            BlockPos center = this.pos.offset(side, radiusAroundCenter+1);
+                        BlockPos query = center.add(this.checkX, 0, this.checkY);
+                        this.checkBehaviors(query);
 
-                            BlockPos plant = center.add(this.checkX, 0, this.checkY);
-                            IBlockState plantState = this.worldObj.getBlockState(plant);
-                            Block plantBlock = plantState.getBlock();
-
-                            if(plantBlock instanceof BlockCrops){
-                                if(((BlockCrops)plantBlock).isMaxAge(plantState)){
-                                    List<ItemStack> seeds = new ArrayList<ItemStack>();
-                                    List<ItemStack> other = new ArrayList<ItemStack>();
-
-                                    List<ItemStack> drops = plantBlock.getDrops(this.worldObj, plant, plantState, 0);
-                                    for(ItemStack stack : drops){
-                                        if(getPlantableFromStack(stack) != null){
-                                            seeds.add(stack);
-                                        }
-                                        else{
-                                            other.add(stack);
-                                        }
-                                    }
-
-                                    boolean putSeeds = true;
-                                    if(!WorldUtil.addToInventory(this, 0, 6, seeds, EnumFacing.UP, false, true)){
-                                        other.addAll(seeds);
-                                        putSeeds = false;
-                                    }
-
-                                    if(WorldUtil.addToInventory(this, 6, 12, other, EnumFacing.UP, false, true)){
-                                        WorldUtil.addToInventory(this, 6, 12, other, EnumFacing.UP, true, true);
-
-                                        if(putSeeds){
-                                            WorldUtil.addToInventory(this, 0, 6, seeds, EnumFacing.UP, true, true);
-                                        }
-
-                                        this.worldObj.playEvent(2001, plant, Block.getStateId(plantState));
-                                        this.worldObj.setBlockToAir(plant);
-                                        didSomething = true;
-                                    }
-                                }
-                            }
-                            else if(plantBlock.isReplaceable(this.worldObj, plant)){
-                                BlockPos farmland = plant.down();
-                                IBlockState farmlandState = this.worldObj.getBlockState(farmland);
-                                Block farmlandBlock = farmlandState.getBlock();
-
-                                IBlockState toPlant = this.getFirstPlantablePlantFromSlots(plant);
-                                if(toPlant != null){
-                                    this.worldObj.setBlockState(plant, toPlant, 3);
-                                    didSomething = true;
-                                }
-                                else if(farmlandBlock instanceof BlockDirt || farmlandBlock instanceof BlockGrass){
-                                    this.worldObj.setBlockState(farmland, Blocks.FARMLAND.getDefaultState(), 2);
-                                    this.worldObj.setBlockToAir(plant);
-                                    this.worldObj.playSound(null, farmland, SoundEvents.ITEM_HOE_TILL, SoundCategory.BLOCKS, 1.0F, 1.0F);
-                                    didSomething = true;
-                                }
-                            }
-
-                            if(didSomething){
-                                this.storage.extractEnergy(USE_PER_OPERATION, false);
-                            }
-
-                            this.checkX++;
-                            if(this.checkX > radiusAroundCenter){
-                                this.checkX = -radiusAroundCenter;
-                                this.checkY++;
-                                if(this.checkY > radiusAroundCenter){
-                                    this.checkY = -radiusAroundCenter;
-                                }
+                        this.checkX++;
+                        if(this.checkX > radiusAroundCenter){
+                            this.checkX = -radiusAroundCenter;
+                            this.checkY++;
+                            if(this.checkY > radiusAroundCenter){
+                                this.checkY = -radiusAroundCenter;
                             }
                         }
                     }
@@ -170,40 +106,29 @@ public class TileEntityFarmer extends TileEntityInventoryBase implements ICustom
         }
     }
 
-    private IBlockState getFirstPlantablePlantFromSlots(BlockPos pos){
-        for(int i = 0; i < 6; i++){
-            ItemStack stack = this.slots[i];
-            if(StackUtil.isValid(stack)){
-                IPlantable plantable = getPlantableFromStack(stack);
-                if(plantable != null){
-                    IBlockState state = plantable.getPlant(this.worldObj, pos);
-                    if(state != null && state.getBlock() instanceof BlockCrops && state.getBlock().canPlaceBlockAt(this.worldObj, pos)){
-                        this.decrStackSize(i, 1);
-                        return state;
+    private void checkBehaviors(BlockPos query){
+        for(IFarmerBehavior behavior : ActuallyAdditionsAPI.FARMER_BEHAVIORS){
+            if(behavior.tryHarvestPlant(this.worldObj, query, this)){
+                return;
+            }
+            else{
+                for(int i = 0; i < this.slots.length; ++i){
+                    ItemStack stack = this.slots[i];
+                    if(StackUtil.isValid(stack)){
+                        if(behavior.tryPlantSeed(stack, this.worldObj, query, this)){
+                            /// @todo Do this properly
+                            this.slots[i].stackSize -= 1;
+                            return;
+                        }
                     }
                 }
             }
         }
-        return null;
-    }
-
-    public static IPlantable getPlantableFromStack(ItemStack stack){
-        Item item = stack.getItem();
-        if(item instanceof IPlantable){
-            return (IPlantable)item;
-        }
-        else if(item instanceof ItemBlock){
-            Block block = Block.getBlockFromItem(item);
-            if(block instanceof IPlantable){
-                return (IPlantable)block;
-            }
-        }
-        return null;
     }
 
     @Override
     public boolean isItemValidForSlot(int i, ItemStack stack){
-        return i < 6 && StackUtil.isValid(stack) && getPlantableFromStack(stack) != null;
+        return i < 6;
     }
 
     @Override
@@ -217,22 +142,68 @@ public class TileEntityFarmer extends TileEntityInventoryBase implements ICustom
     }
 
     @Override
-    public int receiveEnergy(EnumFacing from, int maxReceive, boolean simulate){
-        return this.storage.receiveEnergy(maxReceive, simulate);
+    public EnumFacing getOrientation(){
+        IBlockState state = this.worldObj.getBlockState(this.pos);
+        return WorldUtil.getDirectionByPistonRotation(state.getBlock().getMetaFromState(state));
     }
 
     @Override
-    public int getEnergyStored(EnumFacing from){
+    public boolean addToSeedInventory(List<ItemStack> stacks, boolean actuallyDo){
+        return WorldUtil.addToInventory(this, 0, 6, stacks, EnumFacing.UP, actuallyDo, true);
+    }
+
+    @Override
+    public boolean addToOutputInventory(List<ItemStack> stacks, boolean actuallyDo){
+        return WorldUtil.addToInventory(this, 6, 12, stacks, EnumFacing.UP, actuallyDo, true);
+    }
+
+    @Override
+    public int getX(){
+        return this.pos.getX();
+    }
+
+    @Override
+    public int getY(){
+        return this.pos.getY();
+    }
+
+    @Override
+    public int getZ(){
+        return this.pos.getZ();
+    }
+
+    @Override
+    public World getWorldObject(){
+        return this.worldObj;
+    }
+
+    @Override
+    public void extractEnergy(int amount){
+        this.storage.extractEnergy(amount, false);
+    }
+
+    @Override
+    public int getEnergy(){
         return this.storage.getEnergyStored();
     }
 
     @Override
-    public int getMaxEnergyStored(EnumFacing from){
-        return this.storage.getMaxEnergyStored();
+    public boolean canConnectEnergy(EnumFacing from) {
+        return true;
     }
 
     @Override
-    public boolean canConnectEnergy(EnumFacing from){
-        return true;
+    public int getEnergyStored(EnumFacing from) {
+        return this.storage.getEnergyStored();
+    }
+
+    @Override
+    public int getMaxEnergyStored(EnumFacing from) {
+        return this.storage.getMaxEnergyStored() ;
+    }
+
+    @Override
+    public int receiveEnergy(EnumFacing from, int maxReceive, boolean simulate) {
+        return this.storage.receiveEnergy(maxReceive, simulate);
     }
 }
